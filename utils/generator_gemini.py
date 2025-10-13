@@ -37,8 +37,17 @@ class GeminiGenerator:
             """
         return prompt.strip()
 
-#embeddding the query
     def generate_answer(self, query: str, retrieved_chunks: List[Dict]) -> str:
         prompt = self.build_prompt(query, retrieved_chunks)
         response = self.model.generate_content(prompt)
-        return response.text.strip()
+            
+            # Strip whitespace from the generated text
+        answer = response.text.strip()
+            
+            # ADDED LOGIC: If the generated answer is empty, provide the explicit fallback.
+        if not answer:
+                # This handles cases where the model returns an empty string 
+                # (e.g., due to safety filtering) instead of the instructed fallback.
+            return "The context does not contain that information."
+
+        return answer

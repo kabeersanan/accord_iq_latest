@@ -124,16 +124,8 @@ class AskRequest(BaseModel):
     top_k: Optional[int] = 3
 
 
-@app.post("/ask")
+""" @app.post("/ask")
 async def ask(req: AskRequest):
-    """
-    Accepts JSON body:
-    {
-        "question": "your question",
-        "file_id": "optional-file-id",
-        "top_k": 3
-    }
-    """
     question = req.question
     file_id = req.file_id
     top_k = req.top_k or 3
@@ -158,6 +150,9 @@ async def ask(req: AskRequest):
     # Perform search
     debug_top_k = max(10, top_k)
     results = vector_store.search(q_arr_np, top_k=debug_top_k)
+    for r in results[:3]:
+        print("[DEBUG TEXT SAMPLE]", r["text"][:300].replace("\n", " "), "...\n")
+
     print(f"[DEBUG] search returned {len(results)} results (top_k={debug_top_k})")
 
     # Optional: restrict by file_id
@@ -172,8 +167,61 @@ async def ask(req: AskRequest):
 
     # Generate answer with Gemini
     answer_text = generator.generate_answer(question, results)
+    print(f"[DEBUG] Final answer length: {len(answer_text)}")
 
     return {"answer": answer_text, "retrieved": results}
+ """
+@app.post("/ask")
+async def ask(req: AskRequest):
+    question = req.question
+    file_id = req.file_id
+    top_k = req.top_k or 3
+
+    if not question or question.strip() == "":
+        raise HTTPException(status_code=400, detail="question cannot be empty")
+
+    try: # <--- Start of new try block
+        # Embed the question
+        q_vec = embedder.embed_query(question)
+        print("DEBUG q_vec_len =", len(q_vec))
+
+        # --- Normalize query for cosine/IP FAISS ---
+        import numpy as np
+        q_arr = np.array(q_vec, dtype=np.float32).reshape(1, -1)
+        norm = float(np.linalg.norm(q_arr))
+        if norm != 0.0:
+            q_arr = q_arr / norm
+        q_arr_np = q_arr.flatten().astype('float32')
+
+        print(f"[DEBUG] normalized q_vec len={len(q_arr_np)} (norm was {norm:.4f})")
+
+        # Perform search
+        debug_top_k = max(10, top_k)
+        results = vector_store.search(q_arr_np, top_k=debug_top_k)
+        print(f"[DEBUG] search returned {len(results)} results (top_k={debug_top_k})")
+
+        # Optional: restrict by file_id
+        if file_id:
+            results = [r for r in results if r.get("metadata", {}).get("file_id") == file_id]
+            if not results:
+                return JSONResponse({
+                    "answer": "The requested file ID has no indexed content to answer the question.",
+                    "retrieved": [],
+                    "note": "no chunks for that file_id"
+                }, status_code=200)
+
+        # Generate answer with Gemini
+        answer_text = generator.generate_answer(question, results)
+
+        return {"answer": answer_text, "retrieved": results}
+
+    except Exception as e: # <--- Catch block
+        # This will print the exception trace to your terminal for debugging
+        import traceback
+        traceback.print_exc()
+        
+        # This returns an HTTP 500 response to the client with the specific error
+        raise HTTPException(status_code=500, detail=f"Internal Server Error during RAG processing: {str(e)}. Check backend console for full trace.")
 
 
 # -------------------------------
