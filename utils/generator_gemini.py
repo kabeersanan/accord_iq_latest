@@ -20,7 +20,7 @@ class GeminiGenerator:
     - Error handling for API interruptions.
     """
 
-    def __init__(self, model_name: str = "gemini-2.0-flash"):
+    def __init__(self, model_name: str = "gemini-2.5-flash-lite"):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY not found in .env file.")
