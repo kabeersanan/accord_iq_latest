@@ -66,25 +66,33 @@ class GeminiGenerator:
     def generate_answer(self, query: str, retrieved_chunks: List[Dict]) -> str:
         prompt = self.build_prompt(query, retrieved_chunks)
         
+        # Debug: See exactly what text is being sent to Gemini
+        print(f"--- DEBUG: CONTEXT SENT TO GEMINI ---\n{prompt[:1000]}...\n---")
+
         try:
-            # 4. Error Handling: Prevents the pipeline from crashing if the API fails
+            # Lower safety thresholds for technical/legal RAG
+            safety_settings = [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+            ]
+
             response = self.model.generate_content(
                 prompt,
-                generation_config=self.generation_config
+                generation_config=self.generation_config,
+                safety_settings=safety_settings
             )
             
-            # Check if response was blocked by safety filters
+            # Check if response was blocked
             if not response.parts:
-                logger.warning("Gemini response was blocked by safety filters.")
-                return "I cannot answer this question based on the safety guidelines."
+                # Check the "finish_reason" to see WHY it was blocked
+                reason = getattr(response, 'candidates', [None])[0].finish_reason if response.candidates else "Unknown"
+                logger.warning(f"⚠️ Gemini response was blocked. Reason: {reason}")
+                return f"Error: The AI response was blocked by safety filters (Reason: {reason})."
 
-            answer = response.text.strip()
-            
-            if not answer:
-                return "The context does not contain that information."
-                
-            return answer
+            return response.text.strip()
 
         except Exception as e:
-            logger.error(f"Error generating answer: {e}")
-            return "I encountered an error while processing your request. Please try again."
+            logger.error(f"❌ Error generating answer: {e}")
+            return f"I encountered a technical error: {str(e)}"
